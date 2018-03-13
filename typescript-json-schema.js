@@ -649,6 +649,9 @@ var JsonSchemaGenerator = (function () {
                     definition.type = "object";
                     definition.properties = {};
                 }
+                else if (node && node.kind === ts.SyntaxKind.MethodDeclaration) {
+                    this.getMethodDefinition(node, definition);
+                }
                 else {
                     this.getClassDefinition(typ, tc, definition);
                 }
@@ -659,8 +662,136 @@ var JsonSchemaGenerator = (function () {
         }
         return returnedDefinition;
     };
+    JsonSchemaGenerator.prototype.getMethodDefinition = function (declaration, definition) {
+        definition.type = "object";
+        definition.parameters = this.getMethodParameters(declaration.parameters);
+        if (declaration.typeParameters) {
+            definition.typeParameters = this.getMethodParameters(declaration.typeParameters);
+        }
+        var returnType = this.getTypeDescription(declaration.type);
+        if (returnType.type) {
+            definition.returnType = returnType.type;
+        }
+        if (returnType.typeArguments) {
+            definition.returnTypeArguments = returnType.typeArguments;
+        }
+        if (declaration.questionToken && declaration.questionToken.kind === ts.SyntaxKind.QuestionToken) {
+            definition.optional = true;
+        }
+        delete definition.description;
+        return definition;
+    };
+    JsonSchemaGenerator.prototype.getMethodParameters = function (parameters) {
+        var _this = this;
+        return parameters.slice().sort(function (param1, param2) {
+            return param1.pos - param2.pos;
+        }).map(function (parameter) {
+            return _this.getMethodParameter(parameter);
+        });
+    };
+    JsonSchemaGenerator.prototype.getMethodParameter = function (parameter) {
+        var typeObject = {};
+        if (this.declarationIsPrameterDeclaration(parameter)) {
+            typeObject = this.getTypeDescription(parameter.type);
+        }
+        else if (this.declarationIsTypeParameterDeclaration(parameter)) {
+            typeObject = this.getTypeDescription(parameter);
+        }
+        else {
+            return { name: "__name_not_found__" };
+        }
+        var parameterObject = {
+            name: parameter.name.getText(),
+        };
+        if (this.declarationIsPrameterDeclaration(parameter) && parameter.questionToken && parameter.questionToken.kind === ts.SyntaxKind.QuestionToken) {
+            parameterObject.optional = true;
+        }
+        if (this.declarationIsTypeParameterDeclaration(parameter) && parameter.constraint) {
+            parameterObject.constraint = this.getTypeDescription(parameter.constraint);
+        }
+        if (typeObject.type) {
+            parameterObject.type = typeObject.type;
+        }
+        if (typeObject.typeArguments) {
+            parameterObject.typeArguments = typeObject.typeArguments;
+        }
+        return parameterObject;
+    };
+    JsonSchemaGenerator.prototype.declarationIsPrameterDeclaration = function (declaration) {
+        return declaration.kind === ts.SyntaxKind.Parameter;
+    };
+    JsonSchemaGenerator.prototype.declarationIsTypeParameterDeclaration = function (declaration) {
+        return declaration.kind === ts.SyntaxKind.TypeParameter;
+    };
     JsonSchemaGenerator.prototype.setSchemaOverride = function (symbolName, schema) {
         this.reffedDefinitions[symbolName] = schema;
+    };
+    JsonSchemaGenerator.prototype.getTypeDescription = function (type) {
+        var _this = this;
+        var typeObject = {};
+        if (!type) {
+            return typeObject;
+        }
+        if (this.typeIsUnionType(type)) {
+            typeObject.type = "union";
+            typeObject.typeArguments = type.types.map(function (subType) {
+                return _this.getTypeDescription(subType);
+            });
+        }
+        else if (this.typeIsIntersectionType(type)) {
+            typeObject.type = "intersection";
+            typeObject.typeArguments = type.types.map(function (subType) {
+                return _this.getTypeDescription(subType);
+            });
+        }
+        else if (this.typeIsTypeReference(type)) {
+            var typeName = type.typeName.getText();
+            if (typeName === 'Promise') {
+                return this.getTypeDescription(type.typeArguments[0]);
+            }
+            typeObject.type = { '$ref': "#/definitions/" + typeName };
+            console.log('vova', typeObject.type);
+            if (type.typeArguments && type.typeArguments.length > 0) {
+                typeObject.typeArguments = type.typeArguments.map(function (typeArgument) {
+                    return _this.getTypeDescription(typeArgument);
+                });
+            }
+        }
+        else if (type.kind === ts.SyntaxKind.StringKeyword) {
+            typeObject.type = "string";
+        }
+        else if (type.kind === ts.SyntaxKind.NumberKeyword) {
+            typeObject.type = "number";
+        }
+        else if (type.kind === ts.SyntaxKind.BooleanKeyword) {
+            typeObject.type = "boolean";
+        }
+        else if (this.typeIsTypeLiteral(type)) {
+            typeObject.type = "object";
+            typeObject.properties = {};
+            for (var i = 0; i < type.members.length; i++) {
+                var typeMember = type.members[i];
+                if (this.typeElementIsPropertySignature(typeMember)) {
+                    typeObject.properties[typeMember.name.getText()] = this.getTypeDescription(typeMember.type);
+                }
+            }
+        }
+        return typeObject;
+    };
+    JsonSchemaGenerator.prototype.typeIsTypeReference = function (type) {
+        return type.kind === ts.SyntaxKind.TypeReference;
+    };
+    JsonSchemaGenerator.prototype.typeIsUnionType = function (type) {
+        return type.kind === ts.SyntaxKind.UnionType;
+    };
+    JsonSchemaGenerator.prototype.typeIsIntersectionType = function (type) {
+        return type.kind === ts.SyntaxKind.IntersectionType;
+    };
+    JsonSchemaGenerator.prototype.typeIsTypeLiteral = function (type) {
+        return type.kind === ts.SyntaxKind.TypeLiteral;
+    };
+    JsonSchemaGenerator.prototype.typeElementIsPropertySignature = function (type) {
+        return type.kind === ts.SyntaxKind.PropertySignature;
     };
     JsonSchemaGenerator.prototype.getSchemaForSymbol = function (symbolName, includeReffedDefinitions) {
         if (includeReffedDefinitions === void 0) { includeReffedDefinitions = true; }
