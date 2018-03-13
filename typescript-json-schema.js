@@ -34,6 +34,7 @@ function getDefaultArgs() {
         include: [],
         excludePrivate: false,
         uniqueNames: false,
+        plugins: [],
     };
 }
 exports.getDefaultArgs = getDefaultArgs;
@@ -200,6 +201,15 @@ var JsonSchemaGenerator = (function () {
             var _a;
         }, {});
     }
+    JsonSchemaGenerator.prototype.objectHook = function (symbol, definition) {
+        for (var _i = 0, _a = this.args.plugins; _i < _a.length; _i++) {
+            var plugin = _a[_i];
+            if (plugin.hook(symbol, definition)) {
+                return true;
+            }
+        }
+        return false;
+    };
     Object.defineProperty(JsonSchemaGenerator.prototype, "ReffedDefinitions", {
         get: function () {
             return this.reffedDefinitions;
@@ -705,47 +715,49 @@ var JsonSchemaGenerator = (function () {
             }
             var node = symbol && symbol.getDeclarations() !== undefined ? symbol.getDeclarations()[0] : null;
             if (definition.type === undefined) {
-                if (typ.flags & ts.TypeFlags.Union) {
-                    this.getUnionDefinition(typ, prop, unionModifier, definition);
-                }
-                else if (typ.flags & ts.TypeFlags.Intersection) {
-                    if (this.args.noExtraProps) {
+                if (!symbol || !this.objectHook(symbol, definition)) {
+                    if (typ.flags & ts.TypeFlags.Union) {
+                        this.getUnionDefinition(typ, prop, unionModifier, definition);
+                    }
+                    else if (typ.flags & ts.TypeFlags.Intersection) {
                         if (this.args.noExtraProps) {
-                            definition.additionalProperties = false;
-                        }
-                        var types = typ.types;
-                        for (var _i = 0, types_1 = types; _i < types_1.length; _i++) {
-                            var member = types_1[_i];
-                            var other = this.getTypeDefinition(member, false);
-                            definition.type = other.type;
-                            definition.properties = extend(definition.properties || {}, other.properties);
-                            if (Object.keys(other.default || {}).length > 0) {
-                                definition.default = extend(definition.default || {}, other.default);
+                            if (this.args.noExtraProps) {
+                                definition.additionalProperties = false;
                             }
-                            if (other.required) {
-                                definition.required = unique((definition.required || []).concat(other.required)).sort();
+                            var types = typ.types;
+                            for (var _i = 0, types_1 = types; _i < types_1.length; _i++) {
+                                var member = types_1[_i];
+                                var other = this.getTypeDefinition(member, false);
+                                definition.type = other.type;
+                                definition.properties = extend(definition.properties || {}, other.properties);
+                                if (Object.keys(other.default || {}).length > 0) {
+                                    definition.default = extend(definition.default || {}, other.default);
+                                }
+                                if (other.required) {
+                                    definition.required = unique((definition.required || []).concat(other.required)).sort();
+                                }
                             }
                         }
+                        else {
+                            this.getIntersectionDefinition(typ, definition);
+                        }
+                    }
+                    else if (isRawType) {
+                        if (pairedSymbol) {
+                            this.parseCommentsIntoDefinition(pairedSymbol, definition, {});
+                        }
+                        this.getDefinitionForRootType(typ, reffedType, definition);
+                    }
+                    else if (node && (node.kind === ts.SyntaxKind.EnumDeclaration || node.kind === ts.SyntaxKind.EnumMember)) {
+                        this.getEnumDefinition(typ, definition);
+                    }
+                    else if (symbol && symbol.flags & ts.SymbolFlags.TypeLiteral && symbol.members.size === 0 && !(node && (node.kind === ts.SyntaxKind.MappedType))) {
+                        definition.type = "object";
+                        definition.properties = {};
                     }
                     else {
-                        this.getIntersectionDefinition(typ, definition);
+                        this.getClassDefinition(typ, definition);
                     }
-                }
-                else if (isRawType) {
-                    if (pairedSymbol) {
-                        this.parseCommentsIntoDefinition(pairedSymbol, definition, {});
-                    }
-                    this.getDefinitionForRootType(typ, reffedType, definition);
-                }
-                else if (node && (node.kind === ts.SyntaxKind.EnumDeclaration || node.kind === ts.SyntaxKind.EnumMember)) {
-                    this.getEnumDefinition(typ, definition);
-                }
-                else if (symbol && symbol.flags & ts.SymbolFlags.TypeLiteral && symbol.members.size === 0 && !(node && (node.kind === ts.SyntaxKind.MappedType))) {
-                    definition.type = "object";
-                    definition.properties = {};
-                }
-                else {
-                    this.getClassDefinition(typ, definition);
                 }
             }
         }
@@ -937,7 +949,7 @@ function exec(filePattern, fullTypeName, args) {
     var program;
     var onlyIncludeFiles = undefined;
     if (REGEX_TSCONFIG_NAME.test(path.basename(filePattern))) {
-        if (args.include.length > 0) {
+        if (args.include && args.include.length > 0) {
             var globs = args.include.map(function (f) { return glob.sync(f); });
             onlyIncludeFiles = (_a = []).concat.apply(_a, globs).map(normalizeFileName);
         }

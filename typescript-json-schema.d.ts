@@ -4,6 +4,9 @@ export declare function getDefaultArgs(): Args;
 export declare type ValidationKeywords = {
     [prop: string]: boolean;
 };
+export interface GeneratorPlugin {
+    hook(node: ts.Symbol, definition: Definition): boolean;
+}
 export declare type Args = {
     ref: boolean;
     aliasRef: boolean;
@@ -21,6 +24,7 @@ export declare type Args = {
     include: string[];
     excludePrivate: boolean;
     uniqueNames: boolean;
+    plugins: GeneratorPlugin[];
 };
 export declare type PartialArgs = Partial<Args>;
 export declare type PrimitiveType = number | boolean | string | null;
@@ -77,6 +81,7 @@ export declare class JsonSchemaGenerator {
     }, inheritingTypes: {
         [baseName: string]: string[];
     }, tc: ts.TypeChecker, args?: Args);
+    objectHook(symbol: ts.Symbol, definition: Definition): boolean;
     readonly ReffedDefinitions: {
         [key: string]: Definition;
     };

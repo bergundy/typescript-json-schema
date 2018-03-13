@@ -39,6 +39,8 @@ function run() {
         .describe("uniqueNames", "Use unique names for type symbols.")
         .array("include").default("*", defaultArgs.include)
         .describe("include", "Further limit tsconfig to include only matching files.")
+        .array("plugins").default("plugins", defaultArgs.plugins)
+        .describe("plugins", "List of plugins to run.")
         .argv;
     typescript_json_schema_1.exec(args._[0], args._[1], {
         ref: args.refs,
@@ -57,6 +59,7 @@ function run() {
         include: args.include,
         excludePrivate: args.excludePrivate,
         uniqueNames: args.uniqueNames,
+        plugins: args.plugins.map(function (mod) { return new (require(mod).Plugin)(); }),
     });
 }
 exports.run = run;
