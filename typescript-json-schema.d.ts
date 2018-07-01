@@ -98,7 +98,7 @@ export declare class JsonSchemaGenerator {
     getMainFileSymbols(program: ts.Program, onlyIncludeFiles?: string[]): string[];
 }
 export declare function getProgramFromFiles(files: string[], jsonCompilerOptions?: any, basePath?: string): ts.Program;
-export declare function buildGenerator(program: ts.Program, args?: PartialArgs): JsonSchemaGenerator | null;
+export declare function buildGenerator(program: ts.Program, args?: PartialArgs, onlyIncludeFiles?: string[]): JsonSchemaGenerator | null;
 export declare function generateSchema(program: ts.Program, fullTypeName: string, args?: PartialArgs, onlyIncludeFiles?: string[]): Definition | null;
 export declare function programFromConfig(configFileName: string, onlyIncludeFiles?: string[]): ts.Program;
 export declare function exec(filePattern: string, fullTypeName: string, args?: Args): void;
